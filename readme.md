@@ -27,7 +27,8 @@ curl http://127.0.0.1:9093/start_job
             ],
             "exclude_regexp":  [
                 "\\(Baha"
-            ]
+            ],
+            "download_after": 1717077480
         },
         {
             "name": "rss2",

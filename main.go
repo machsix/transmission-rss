@@ -21,6 +21,8 @@ func main() {
 	lishost := flag.String("host", ":9093", "listen host")
 	flag.Parse()
 
+	configPath = *path
+
 	updateConfig()
 
 	cache, err := NewCacheByPath(filepath.Join(*path, "trss.db"))
@@ -62,6 +64,8 @@ func main() {
 			slog.Warn("job is already running")
 			return
 		}
+
+		slog.Info("start job")
 
 		ch <- func() { runJob.Store(false) }
 	}))

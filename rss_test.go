@@ -15,15 +15,21 @@ import (
 var data []byte
 
 func TestParse(t *testing.T) {
+
 	chs, err := ParseString(string(data))
 	require.NoError(t, err)
 
 	rg := regexp.MustCompile(`\(CR`)
-	for _, ch := range chs.Items {
-		if rg.MatchString(ch.Title) {
-			t.Log(ch.Title)
+
+	for _, ch := range chs {
+		for _, ch := range ch.Items {
+			t.Logf("%+v", ch)
+			if rg.MatchString(ch.Title) {
+				t.Log(ch.Title)
+			}
 		}
 	}
+
 }
 
 func TestConfig(t *testing.T) {

@@ -1,15 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"encoding/xml"
+	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
-	"regexp"
-
-	gtp "github.com/j-muller/go-torrent-parser"
-	"github.com/mmcdole/gofeed"
+	"time"
 )
 
 /*
@@ -22,73 +19,59 @@ https://planet.openstreetmap.org/planet/changesets-bz2-rss.xml
 https://planet.openstreetmap.org/planet/discussions-bz2-rss.xml
 */
 
-func ParseString(data string) (*Channel, error) {
-	ps := gofeed.NewParser()
-
-	feed, err := ps.ParseString(data)
+func ParseString(data string) ([]Channel, error) {
+	var rf RSSFeed
+	err := xml.Unmarshal([]byte(data), &rf)
 	if err != nil {
 		return nil, err
 	}
 
-	return parse(feed), nil
-}
+	var chs []Channel
 
-func ParseUrl(url string) (*Channel, error) {
-	ps := gofeed.NewParser()
-
-	feed, err := ps.ParseURL(url)
-	if err != nil {
-		return nil, err
-	}
-
-	return parse(feed), nil
-}
-
-func parse(feed *gofeed.Feed) *Channel {
-	ch := &Channel{
-		Title:    feed.Title,
-		Url:      feed.Link,
-		Describe: feed.Description,
-	}
-
-	for _, item := range feed.Items {
-		if len(item.Enclosures) == 0 {
-			continue
+	for _, channel := range rf.Channel {
+		ch := Channel{
+			Title:    channel.Title,
+			Url:      channel.Link,
+			Describe: channel.Description,
 		}
 
-		ch.Items = append(ch.Items, Item{
-			Title:       item.Title,
-			ContentType: item.Enclosures[0].Type,
-			Url:         item.Enclosures[0].URL,
-			Describe:    item.Description,
-		})
+		for _, item := range channel.Items {
+			if len(item.Enclosure) == 0 {
+				continue
+			}
+
+			it := Item{
+				Title:       item.Title,
+				ContentType: item.Enclosure[0].Type,
+				Url:         item.Enclosure[0].URL,
+				Describe:    item.Description,
+			}
+
+			if item.PubDate != "" {
+				it.PubDate = ParseTime(item.PubDate)
+			} else if item.Torrent.PubDate != "" {
+				it.PubDate = ParseTime(item.Torrent.PubDate)
+			}
+
+			ch.Items = append(ch.Items, it)
+		}
+
+		chs = append(chs, ch)
 	}
 
-	return ch
+	return chs, nil
 }
 
-type Channel struct {
-	Title    string
-	Url      string
-	Describe string
-
-	Items []Item
-}
-
-type Item struct {
-	Title       string
-	ContentType string
-	Url         string
-	Describe    string
-}
-
-func (i *Item) Get(ctx context.Context) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", i.Url, nil)
+func ParseUrl(ctx context.Context, url string) ([]Channel, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Content-Type", i.ContentType)
+	// if f.AuthConfig != nil && f.AuthConfig.Username != "" && f.AuthConfig.Password != "" {
+	// 	req.SetBasicAuth(f.AuthConfig.Username, f.AuthConfig.Password)
+	// }
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -96,94 +79,77 @@ func (i *Item) Get(ctx context.Context) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, err
+		return nil, fmt.Errorf("status code: %d", resp.StatusCode)
 	}
 
-	return io.ReadAll(resp.Body)
-}
-
-type RSS struct {
-	Name          string   `json:"name,omitempty"`
-	Url           string   `json:"url,omitempty"`
-	DownloadDir   string   `json:"download_dir,omitempty"`
-	Internal      int      `json:"internal,omitempty"`
-	Regexp        []string `json:"regexp,omitempty"`
-	ExcludeRegexp []string `json:"exclude_regexp,omitempty"`
-
-	regexp        []*regexp.Regexp
-	excludeRegexp []*regexp.Regexp
-}
-
-func (r *RSS) Match(title string) bool {
-	if r.regexp == nil && len(r.Regexp) > 0 {
-		regexps := make([]*regexp.Regexp, 0, len(r.Regexp))
-
-		for _, v := range r.Regexp {
-			rr, err := regexp.Compile(v)
-			if err != nil {
-				slog.Error("compile regexp failed", "err", err, "regexp", v)
-				continue
-			}
-
-			regexps = append(regexps, rr)
-
-		}
-
-		r.regexp = regexps
-	}
-
-	if r.excludeRegexp == nil && len(r.ExcludeRegexp) > 0 {
-		regexps := make([]*regexp.Regexp, 0, len(r.ExcludeRegexp))
-
-		for _, v := range r.ExcludeRegexp {
-			rr, err := regexp.Compile(v)
-			if err != nil {
-				slog.Error("compile regexp failed", "err", err, "regexp", v)
-				continue
-			}
-
-			regexps = append(regexps, rr)
-		}
-
-		r.excludeRegexp = regexps
-	}
-
-	for _, v := range r.excludeRegexp {
-		if v.MatchString(title) {
-			return false
-		}
-	}
-
-	if len(r.Regexp) == 0 {
-		return true
-	}
-
-	for _, v := range r.regexp {
-		if v.MatchString(title) {
-			return true
-		}
-	}
-
-	return false
-}
-
-type Config struct {
-	Rss []*RSS `json:"rss,omitempty"`
-}
-
-type Torrent struct {
-	Torrent *gtp.Torrent
-	Bytes   []byte
-}
-
-func ParseTorrent(data []byte) (*Torrent, error) {
-	gt, err := gtp.Parse(bytes.NewReader(data))
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Torrent{
-		Torrent: gt,
-		Bytes:   data,
-	}, nil
+	return ParseString(string(data))
+}
+
+type RSSFeed struct {
+	Version string           `xml:"version,attr"`
+	Channel []RssFeedChannel `xml:"channel"`
+}
+
+type RssFeedChannel struct {
+	Title       string    `xml:"title"`
+	Link        string    `xml:"link"`
+	Description string    `xml:"description"`
+	Language    string    `xml:"language"`
+	Copyright   string    `xml:"copyright"`
+	PubDate     string    `xml:"pubDate"`
+	Generator   string    `xml:"generator"`
+	Items       []RSSItem `xml:"item"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	Author      string `xml:"author"`
+	Category    struct {
+		Domain string `xml:"domain,attr"`
+		Name   string `xml:",chardata"`
+	} `xml:"category"`
+	Comments  string `xml:"comments"`
+	Enclosure []struct {
+		URL  string `xml:"url,attr"`
+		Len  int64  `xml:"length,attr"`
+		Type string `xml:"type,attr"`
+	} `xml:"enclosure"`
+	GUID struct {
+		IsPermaLink bool   `xml:"type,attr"`
+		Value       string `xml:",chardata"`
+	} `xml:"guid"`
+	PubDate string `xml:"pubDate"`
+	Source  string `xml:"source"`
+	Torrent struct {
+		Link          string `xml:"link"`
+		PubDate       string `xml:"pubDate"`
+		ContentLength string `xml:"contentLength"`
+	} `xml:"torrent"`
+}
+
+var (
+	timeFormat = []string{time.ANSIC, time.UnixDate, time.RubyDate,
+		time.RFC1123, time.RFC1123Z, time.RFC3339, time.RFC3339Nano,
+		time.RFC822, time.RFC822Z, time.RFC850, time.Kitchen,
+		"2006-01-02T15:04:05.999999999",
+		time.Stamp, time.StampMicro, time.StampMilli, time.StampNano}
+)
+
+// ParseTime parses a string to time.Time.
+// If fails to parse a string, it will return time.Now().
+func ParseTime(s string) time.Time {
+	for k := range timeFormat {
+		t, e := time.Parse(timeFormat[k], s)
+		if e == nil {
+			return t
+		}
+	}
+	return time.Now()
 }
