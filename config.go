@@ -49,13 +49,13 @@ func (i *Item) Get(ctx context.Context) ([]byte, error) {
 }
 
 type RSS struct {
-	Name          string   `json:"name,omitempty"`
-	Url           string   `json:"url,omitempty"`
-	DownloadDir   string   `json:"download_dir,omitempty"`
-	Internal      int      `json:"internal,omitempty"`
-	Regexp        []string `json:"regexp,omitempty"`
-	ExcludeRegexp []string `json:"exclude_regexp,omitempty"`
-	DownloadAfter int64    `json:"download_after,omitempty"`
+	Name          string   `json:"name,omitempty" toml:"name"`
+	Url           string   `json:"url,omitempty" toml:"url"`
+	DownloadDir   string   `json:"download_dir,omitempty" toml:"download_dir"`
+	Internal      int      `json:"internal,omitempty" toml:"internal"`
+	Regexp        []string `json:"regexp,omitempty" toml:"regexp"`
+	ExcludeRegexp []string `json:"exclude_regexp,omitempty" toml:"exclude_regexp"`
+	DownloadAfter int64    `json:"download_after,omitempty" toml:"download_after"`
 
 	regexp        []*regexp.Regexp
 	excludeRegexp []*regexp.Regexp
@@ -128,7 +128,7 @@ func (r *RSS) Match(title string) bool {
 }
 
 type Config struct {
-	Rss []*RSS `json:"rss,omitempty"`
+	Rss []*RSS `json:"rss,omitempty" toml:"rss"`
 }
 
 type Torrent struct {

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/BurntSushi/toml"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,10 +43,22 @@ func TestConfig(t *testing.T) {
 				Regexp:        []string{"^test$"},
 				ExcludeRegexp: []string{"^test$"},
 			},
+			{
+				Name:          "test",
+				Url:           "https://example.com/rss",
+				DownloadDir:   filepath.Join(os.TempDir(), "test"),
+				Regexp:        []string{"^test$"},
+				ExcludeRegexp: []string{"^test$"},
+			},
 		},
 	}
 
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	_ = encoder.Encode(cf)
+
+	data, err := toml.Marshal(cf)
+	require.NoError(t, err)
+
+	t.Log(string(data))
 }

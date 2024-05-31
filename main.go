@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync/atomic"
+
+	"github.com/BurntSushi/toml"
 )
 
 var configPath string
@@ -17,11 +19,19 @@ var runJob atomic.Bool
 
 func main() {
 	path := flag.String("path", "", "config dir path")
+	configType := flag.String("config-type", "toml", "config type, json or toml")
 	rpc := flag.String("rpc", "http://127.0.0.1:9091/transmission/rpc", "transmission rpc url")
 	lishost := flag.String("host", ":9093", "listen host")
 	flag.Parse()
 
 	configPath = *path
+
+	updateConfig := updateTomlConfig
+	configFile := "config.toml"
+	if *configType == "json" {
+		updateConfig = updateJsonConfig
+		configFile = "config.json"
+	}
 
 	updateConfig()
 
@@ -50,7 +60,7 @@ func main() {
 	}()
 
 	go func() {
-		if err := WatchConfig(ctx, filepath.Join(*path, "config.json"), func() {
+		if err := WatchConfig(ctx, filepath.Join(*path, configFile), func() {
 			slog.Info("check config changed, reload config")
 			updateConfig()
 		}); err != nil {
@@ -75,7 +85,7 @@ func main() {
 	}
 }
 
-func updateConfig() {
+func updateJsonConfig() {
 	data, err := os.ReadFile(filepath.Join(configPath, "config.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -108,6 +118,47 @@ func updateConfig() {
 
 	cf := new(Config)
 	err = json.Unmarshal(data, cf)
+	if err != nil {
+		slog.Error("unmarshal config failed", "err", err)
+		return
+	}
+
+	config.Store(cf)
+}
+
+func updateTomlConfig() {
+	data, err := os.ReadFile(filepath.Join(configPath, "config.toml"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			cf := new(Config)
+			config.Store(cf)
+
+			data, err := toml.Marshal(cf)
+			if err != nil {
+				slog.Error("marshal config failed", "err", err)
+				return
+			}
+
+			err = os.MkdirAll(configPath, 0755)
+			if err != nil {
+				slog.Error("create config dir failed", "err", err)
+				return
+			}
+
+			err = os.WriteFile(filepath.Join(configPath, "config.toml"), data, 0644)
+			if err != nil {
+				slog.Error("write config failed", "err", err)
+				return
+			}
+
+			return
+		}
+		slog.Error("read config failed", "err", err)
+		return
+	}
+
+	cf := new(Config)
+	err = toml.Unmarshal(data, cf)
 	if err != nil {
 		slog.Error("unmarshal config failed", "err", err)
 		return

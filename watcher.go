@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -14,7 +15,12 @@ func WatchConfig(ctx context.Context, file string, do func()) error {
 	}
 	defer watcher.Close()
 
-	err = watcher.Add(file)
+	file, err = filepath.Abs(file)
+	if err != nil {
+		return err
+	}
+
+	err = watcher.Add(filepath.Dir(file))
 	if err != nil {
 		return err
 	}
@@ -39,11 +45,15 @@ func WatchConfig(ctx context.Context, file string, do func()) error {
 				return nil
 			}
 
-			if event.Op&fsnotify.Write != fsnotify.Write {
+			if event.Name != file {
 				continue
 			}
 
-			timer.Reset(time.Second * 5)
+			if event.Op&fsnotify.Remove == fsnotify.Remove {
+				continue
+			}
+
+			timer.Reset(time.Second * 9)
 		}
 	}
 }
