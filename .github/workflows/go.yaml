@@ -1,0 +1,51 @@
+name: Go
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          [
+            [linux, "amd64"],
+            [linux, "amd64v3"],
+            [linux, "arm64"],
+            [darwin, "amd64"],
+            [darwin, "amd64v3"],
+            [darwin, "arm64"],
+            [windows, "amd64"],
+            [windows, "amd64v3"],
+            [windows, "arm64"],
+          ]
+        cmd: [transmission-rss]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          check-latest: true
+          go-version-file: "go.mod"
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.env[0] }}
+          GOARCH: ${{ matrix.env[1] == 'amd64v3' && 'amd64' || matrix.env[1] }}
+          GOAMD64: ${{ matrix.env[1] == 'amd64v3' && 'v3' || '' }}
+        run: |
+          make ${{ matrix.cmd }}
+
+      - name: upload_${{ matrix.cmd }}_${{ matrix.env[0] }}_${{ matrix.env[1] }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.cmd }}_${{ matrix.env[0] }}_${{ matrix.env[1] }}
+          path: |
+            ${{ matrix.cmd }}${{ matrix.env[0] == 'windows' && '.exe' || '' }}

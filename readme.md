@@ -16,7 +16,12 @@ curl http://127.0.0.1:9093/start_job
 
 ## config
 
-### toml 
+put config in config dir, config type can be json or toml, config file name:
+
+- toml: config.toml
+- json: config.json
+
+### config.toml 
 
 ```toml
 [[rss]]
@@ -35,7 +40,7 @@ regexp = ["\\(CR,RSS2","RSS2"]
 exclude_regexp = ["\\(Baha"]
 ```
 
-### json
+### config.json
 
 ```json
 {
