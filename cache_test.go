@@ -14,7 +14,7 @@ func TestCache(t *testing.T) {
 	require.NoError(t, err)
 	defer cache.Close()
 
-	require.NoError(t, cache.Store("test://rss_url", "test://torrent_url", &Torrent{
+	require.NoError(t, cache.Store("test://rss_url", "test://torrent_url", &TorrentFile{
 		Bytes: []byte("xxxx"),
 		Torrent: &gotorrentparser.Torrent{
 			Announce: []string{"test://announce"},
@@ -29,6 +29,13 @@ func TestCache(t *testing.T) {
 	}))
 
 	tt, ok := cache.Load("test://rss_url", "test://torrent_url")
+	require.True(t, ok)
+
+	_ = json.NewEncoder(os.Stdout).Encode(tt)
+
+	require.NoError(t, cache.Store("test://rss_url", "test://torrent_url_2", TorrentHash("test hash")))
+
+	tt, ok = cache.Load("test://rss_url", "test://torrent_url_2")
 	require.True(t, ok)
 
 	_ = json.NewEncoder(os.Stdout).Encode(tt)

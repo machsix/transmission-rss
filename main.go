@@ -8,14 +8,19 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 
 	"github.com/BurntSushi/toml"
 )
 
-var configPath string
 var config atomic.Pointer[Config]
+var configMu sync.RWMutex
 var runJob atomic.Bool
+var configFullPath string
+
+var unmarshalConfig = toml.Unmarshal
+var marshalConfig = toml.Marshal
 
 func main() {
 	path := flag.String("path", "", "config dir path")
@@ -24,13 +29,11 @@ func main() {
 	lishost := flag.String("host", ":9093", "listen host")
 	flag.Parse()
 
-	configPath = *path
-
-	updateConfig := updateTomlConfig
-	configFile := "config.toml"
+	configFullPath = filepath.Join(*path, "config.toml")
 	if *configType == "json" {
-		updateConfig = updateJsonConfig
-		configFile = "config.json"
+		configFullPath = filepath.Join(*path, "config.json")
+		unmarshalConfig = json.Unmarshal
+		marshalConfig = func(v any) ([]byte, error) { return json.MarshalIndent(v, "", "  ") }
 	}
 
 	updateConfig()
@@ -60,7 +63,7 @@ func main() {
 	}()
 
 	go func() {
-		if err := WatchConfig(ctx, filepath.Join(*path, configFile), func() {
+		if err := WatchConfig(ctx, configFullPath, func() {
 			slog.Info("check config changed, reload config")
 			updateConfig()
 		}); err != nil {
@@ -69,8 +72,9 @@ func main() {
 	}()
 
 	mux := http.NewServeMux()
+	route(mux)
 	mux.Handle("GET /start_job", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if runJob.Load() {
+		if !runJob.CompareAndSwap(false, true) {
 			slog.Warn("job is already running")
 			return
 		}
@@ -85,28 +89,18 @@ func main() {
 	}
 }
 
-func updateJsonConfig() {
-	data, err := os.ReadFile(filepath.Join(configPath, "config.json"))
+func updateConfig() {
+	configMu.Lock()
+	defer configMu.Unlock()
+
+	data, err := os.ReadFile(configFullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			cf := new(Config)
 			config.Store(cf)
 
-			data, err := json.Marshal(cf)
-			if err != nil {
-				slog.Error("marshal config failed", "err", err)
-				return
-			}
-
-			err = os.MkdirAll(configPath, 0755)
-			if err != nil {
-				slog.Error("create config dir failed", "err", err)
-				return
-			}
-
-			err = os.WriteFile(filepath.Join(configPath, "config.json"), data, 0644)
-			if err != nil {
-				slog.Error("write config failed", "err", err)
+			if err := saveConfig(cf); err != nil {
+				slog.Error("save config failed", "err", err)
 				return
 			}
 
@@ -117,7 +111,7 @@ func updateJsonConfig() {
 	}
 
 	cf := new(Config)
-	err = json.Unmarshal(data, cf)
+	err = unmarshalConfig(data, cf)
 	if err != nil {
 		slog.Error("unmarshal config failed", "err", err)
 		return
@@ -126,43 +120,16 @@ func updateJsonConfig() {
 	config.Store(cf)
 }
 
-func updateTomlConfig() {
-	data, err := os.ReadFile(filepath.Join(configPath, "config.toml"))
+func saveConfig(config *Config) error {
+	data, err := marshalConfig(config)
 	if err != nil {
-		if os.IsNotExist(err) {
-			cf := new(Config)
-			config.Store(cf)
-
-			data, err := toml.Marshal(cf)
-			if err != nil {
-				slog.Error("marshal config failed", "err", err)
-				return
-			}
-
-			err = os.MkdirAll(configPath, 0755)
-			if err != nil {
-				slog.Error("create config dir failed", "err", err)
-				return
-			}
-
-			err = os.WriteFile(filepath.Join(configPath, "config.toml"), data, 0644)
-			if err != nil {
-				slog.Error("write config failed", "err", err)
-				return
-			}
-
-			return
-		}
-		slog.Error("read config failed", "err", err)
-		return
+		return err
 	}
 
-	cf := new(Config)
-	err = toml.Unmarshal(data, cf)
+	err = os.WriteFile(configFullPath, data, 0644)
 	if err != nil {
-		slog.Error("unmarshal config failed", "err", err)
-		return
+		return err
 	}
 
-	config.Store(cf)
+	return nil
 }

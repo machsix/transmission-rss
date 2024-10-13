@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"net/url"
 
 	"github.com/hekmon/transmissionrpc/v3"
@@ -28,12 +27,7 @@ func NewTransmission(rpcUrl string) (*Transmission, error) {
 	}, nil
 }
 
-func (t *Transmission) Add(ctx context.Context, files *Torrent, downloadDir string) error {
-	str := base64.StdEncoding.EncodeToString(files.Bytes)
-	_, err := t.cli.TorrentAdd(context.TODO(), transmissionrpc.TorrentAddPayload{
-		DownloadDir: &downloadDir,
-		MetaInfo:    &str,
-	})
-
+func (t *Transmission) Add(ctx context.Context, files Torrent, downloadDir string) error {
+	_, err := t.cli.TorrentAdd(context.TODO(), files.AddPayload(downloadDir))
 	return err
 }

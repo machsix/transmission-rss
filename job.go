@@ -3,7 +3,11 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/url"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 )
 
 type Job struct {
@@ -27,7 +31,9 @@ func (j *Job) Start(ctx context.Context, notify chan func(), getConfig func() *C
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			runJob.Store(true)
 			j.Do(getConfig)
+			runJob.Store(false)
 		case f := <-notify:
 			j.Do(getConfig)
 			ticker.Reset(time.Hour)
@@ -41,12 +47,68 @@ func (j *Job) Start(ctx context.Context, notify chan func(), getConfig func() *C
 func (j *Job) Do(getConfig func() *Config) {
 	config := getConfig()
 
-	for _, v := range config.Rss {
-		chs, err := ParseUrl(context.TODO(), v.Url)
-		if err != nil {
-			slog.Error("parse rss failed", "err", err, "url", v.Url, "name", v.Name)
-			continue
+	m := splitConfigByHostname(config)
+
+	wg := &sync.WaitGroup{}
+
+	for _, v := range m {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			j.DoOne(v)
+		}()
+	}
+
+	wg.Wait()
+
+	slog.Info("job done")
+}
+
+func (j *Job) DoOne(config *Config) {
+	type Result struct {
+		channels []Channel
+		rss      *RSS
+	}
+	ch := make(chan Result, 10)
+
+	go func() {
+		wg := &sync.WaitGroup{}
+		semaphore := semaphore.NewWeighted(15)
+		defer close(ch)
+		for _, v := range config.Rss {
+			if v.ExpiredOrDisabled() {
+				continue
+			}
+
+			time.Sleep(time.Millisecond * 100)
+
+			wg.Add(1)
+
+			_ = semaphore.Acquire(context.Background(), 1)
+			go func() {
+				defer wg.Done()
+				defer semaphore.Release(1)
+				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+				chs, err := ParseUrl(ctx, v.Url)
+				cancel()
+				if err != nil {
+					slog.Error("parse rss failed", "err", err, "url", v.Url, "name", v.Name)
+					return
+				}
+
+				ch <- Result{
+					channels: chs,
+					rss:      v,
+				}
+			}()
 		}
+		wg.Wait()
+	}()
+
+	for r := range ch {
+		chs := r.channels
+		v := r.rss
 
 		for _, ch := range chs {
 			for _, item := range ch.Items {
@@ -63,15 +125,15 @@ func (j *Job) Do(getConfig func() *Config) {
 					continue
 				}
 
-				data, err := item.Get(context.Background())
-				if err != nil {
-					slog.Error("get torrent failed", "err", err, "url", item.Url, "name", v.Name)
-					continue
+				if v.FetchInterval > 0 {
+					time.Sleep(time.Duration(v.FetchInterval) * time.Millisecond)
 				}
 
-				tr, err := ParseTorrent(data)
+				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+				tr, err := item.Get(ctx)
+				cancel()
 				if err != nil {
-					slog.Error("parse torrent failed", "err", err, "url", item.Url, "name", v.Name)
+					slog.Error("get torrent failed", "err", err, "url", item.Url, "name", v.Name)
 					continue
 				}
 
@@ -91,4 +153,24 @@ func (j *Job) Do(getConfig func() *Config) {
 			}
 		}
 	}
+}
+
+func splitConfigByHostname(config *Config) map[string]*Config {
+	m := make(map[string]*Config)
+	for _, v := range config.Rss {
+		uri, err := url.Parse(v.Url)
+		if err != nil {
+			m["default"] = config
+			continue
+		}
+
+		x := m[uri.Host]
+		if x == nil {
+			x = new(Config)
+			m[uri.Host] = x
+		}
+
+		x.Rss = append(x.Rss, v)
+	}
+	return m
 }

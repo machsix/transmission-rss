@@ -31,6 +31,9 @@ download_dir = "/download/rss1"
 regexp = ["\\(CR"]
 exclude_regexp = ["\\(Baha"]
 download_after = 1717077480
+expire_time = 1717077480
+disabled = true
+fetch_interval = 1000 # units: ms
 
 [[rss]]
 name = "rss2"

@@ -8,8 +8,8 @@ import (
 )
 
 type Cache interface {
-	Load(rssUrl, torrentUrl string) (*Torrent, bool)
-	Store(rssUrl, torrentUrl string, t *Torrent) error
+	Load(rssUrl, torrentUrl string) (Torrent, bool)
+	Store(rssUrl, torrentUrl string, t Torrent) error
 	Close() error
 }
 
@@ -26,8 +26,8 @@ func NewCacheByPath(path string) (Cache, error) {
 	return &cache{b}, nil
 }
 
-func (c *cache) Load(rssUrl, torrentUrl string) (*Torrent, bool) {
-	var t *Torrent
+func (c *cache) Load(rssUrl, torrentUrl string) (Torrent, bool) {
+	var t Torrent
 	_ = c.b.View(func(tx *bbolt.Tx) error {
 		bkt := tx.Bucket([]byte(rssUrl))
 		if bkt == nil {
@@ -39,9 +39,7 @@ func (c *cache) Load(rssUrl, torrentUrl string) (*Torrent, bool) {
 			return nil
 		}
 
-		tt := &Torrent{}
-
-		err := gob.NewDecoder(bytes.NewReader(data)).Decode(tt)
+		tt, err := c.parseTorrent(data)
 		if err != nil {
 			return err
 		}
@@ -53,7 +51,7 @@ func (c *cache) Load(rssUrl, torrentUrl string) (*Torrent, bool) {
 	return t, t != nil
 }
 
-func (c *cache) Store(rssUrl, torrentUrl string, t *Torrent) error {
+func (c *cache) Store(rssUrl, torrentUrl string, t Torrent) error {
 	return c.b.Update(func(tx *bbolt.Tx) error {
 		bkt, err := tx.CreateBucketIfNotExists([]byte(rssUrl))
 		if err != nil {
@@ -72,4 +70,20 @@ func (c *cache) Store(rssUrl, torrentUrl string, t *Torrent) error {
 
 func (c *cache) Close() error {
 	return c.b.Close()
+}
+
+func (c *cache) parseTorrent(b []byte) (Torrent, error) {
+	tf := &TorrentFile{}
+	err := gob.NewDecoder(bytes.NewReader(b)).Decode(tf)
+	if err == nil {
+		return tf, nil
+	}
+
+	var th TorrentHash
+	err = gob.NewDecoder(bytes.NewReader(b)).Decode(&th)
+	if err == nil {
+		return th, nil
+	}
+
+	return nil, err
 }
