@@ -18,6 +18,7 @@ var config atomic.Pointer[Config]
 var configMu sync.RWMutex
 var runJob atomic.Bool
 var configFullPath string
+var ch = make(chan func())
 
 var unmarshalConfig = toml.Unmarshal
 var marshalConfig = toml.Marshal
@@ -54,37 +55,22 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ch := make(chan func())
-
 	go func() {
 		if err := job.Start(ctx, ch, config.Load); err != nil {
 			slog.Error("job start failed", "err", err)
 		}
 	}()
 
-	go func() {
-		if err := WatchConfig(ctx, configFullPath, func() {
-			slog.Info("check config changed, reload config")
-			updateConfig()
-		}); err != nil {
-			slog.Error("watch config failed", "err", err)
-		}
-	}()
+	// go func() {
+	// 	if err := WatchConfig(ctx, configFullPath, func() {
+	// 		slog.Info("check config changed, reload config")
+	// 		updateConfig()
+	// 	}); err != nil {
+	// 		slog.Error("watch config failed", "err", err)
+	// 	}
+	// }()
 
-	mux := http.NewServeMux()
-	route(mux)
-	mux.Handle("GET /start_job", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !runJob.CompareAndSwap(false, true) {
-			slog.Warn("job is already running")
-			return
-		}
-
-		slog.Info("start job")
-
-		ch <- func() { runJob.Store(false) }
-	}))
-
-	if err := http.ListenAndServe(*lishost, mux); err != nil {
+	if err := http.ListenAndServe(*lishost, route()); err != nil {
 		panic(err)
 	}
 }
