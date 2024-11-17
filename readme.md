@@ -14,14 +14,18 @@ immidiately run once
 curl http://127.0.0.1:9093/start_job
 ```
 
-## config
+![screentshot](https://raw.githubusercontent.com/Asutorufa/transmission-rss/refs/heads/main/assets/screenshot.png)
+
+## config dir
+
+### config
 
 put config in config dir, config type can be json or toml, config file name:
 
 - toml: config.toml
 - json: config.json
 
-### config.toml 
+#### config.toml
 
 ```toml
 [[rss]]
@@ -43,7 +47,7 @@ regexp = ["\\(CR,RSS2","RSS2"]
 exclude_regexp = ["\\(Baha"]
 ```
 
-### config.json
+#### config.json
 
 ```json
 {
