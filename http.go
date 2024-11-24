@@ -46,19 +46,16 @@ func route() http.Handler {
 	}))
 
 	ServerHTTP(mux, "GET /start_job", func(w http.ResponseWriter, r *http.Request) error {
-		if !runJob.CompareAndSwap(false, true) {
-			slog.Warn("job is already running")
+		select {
+		case ch <- struct{}{}:
 			return nil
+		case <-r.Context().Done():
+			return r.Context().Err()
 		}
-
-		slog.Info("start job")
-
-		ch <- func() { runJob.Store(false) }
-		return nil
 	})
 
 	ServerHTTP(mux, "GET /api/v1/status", func(w http.ResponseWriter, r *http.Request) error {
-		return json.NewEncoder(w).Encode(map[string]any{"running": runJob.Load()})
+		return json.NewEncoder(w).Encode(map[string]any{"running": job.Running()})
 	})
 
 	ServerHTTP(mux, "GET /api/v1/config", func(w http.ResponseWriter, r *http.Request) error {

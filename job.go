@@ -2,17 +2,20 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/semaphore"
 )
 
 type Job struct {
-	tr    *Transmission
-	cache Cache
+	tr     *Transmission
+	cache  Cache
+	runJob atomic.Bool
 }
 
 func NewJob(tr *Transmission, cache Cache) *Job {
@@ -22,7 +25,9 @@ func NewJob(tr *Transmission, cache Cache) *Job {
 	}
 }
 
-func (j *Job) Start(ctx context.Context, notify chan func(), getConfig func() *Config) error {
+func (j *Job) Running() bool { return j.runJob.Load() }
+
+func (j *Job) Start(ctx context.Context, notify chan struct{}, getConfig func() *Config) error {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
@@ -31,20 +36,24 @@ func (j *Job) Start(ctx context.Context, notify chan func(), getConfig func() *C
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			runJob.Store(true)
 			j.Do(getConfig)
-			runJob.Store(false)
-		case f := <-notify:
+		case <-notify:
 			j.Do(getConfig)
 			ticker.Reset(time.Hour)
-			if f != nil {
-				f()
-			}
 		}
 	}
 }
 
 func (j *Job) Do(getConfig func() *Config) {
+	if !j.runJob.CompareAndSwap(false, true) {
+		slog.Warn("job is already running")
+		return
+	}
+
+	slog.Info("start job")
+
+	defer j.runJob.Store(false)
+
 	config := getConfig()
 
 	m := splitConfigByHostname(config)
@@ -70,6 +79,7 @@ func (j *Job) DoOne(config *Config) {
 		channels []Channel
 		rss      *RSS
 	}
+
 	ch := make(chan Result, 10)
 
 	go func() {
@@ -112,52 +122,61 @@ func (j *Job) DoOne(config *Config) {
 
 		for _, ch := range chs {
 			for _, item := range ch.Items {
-				if !v.MatchDate(item.PubDate) {
-					continue
-				}
-
-				if !v.Match(item.Title) {
-					continue
-				}
-
-				_, ok := j.cache.Load(v.Url, item.Url)
-				if ok {
-					continue
-				}
-
-				if v.FetchInterval > 0 {
-					time.Sleep(time.Duration(v.FetchInterval) * time.Millisecond)
-				}
-
-				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-				tr, err := item.Get(ctx)
-				cancel()
-				if err != nil {
-					slog.Error("get torrent failed", "err", err, "url", item.Url, "name", v.Name)
-					continue
-				}
-
-				err = j.tr.Add(context.TODO(), tr, v.DownloadDir)
-				if err != nil {
-					slog.Error("add torrent failed", "err", err, "url", item.Url, "name", v.Name)
-					continue
-				}
-
-				slog.Info("add torrent", "url", item.Url, "name", item.Title)
-
-				err = j.cache.Store(v.Url, item.Url, tr)
-				if err != nil {
-					slog.Error("store torrent failed", "err", err, "url", item.Url, "name", v.Name)
-					continue
+				if err := j.Process(v, item); err != nil {
+					slog.Error("process item failed", "url", item.Url, "name", v.Name, "err", err)
 				}
 			}
 		}
 	}
 }
 
+func (j *Job) Process(v *RSS, item Item) error {
+	if !v.MatchDate(item.PubDate) {
+		return nil
+	}
+
+	if !v.Match(item.Title) {
+		return nil
+	}
+
+	_, ok := j.cache.Load(v.Url, item.Url)
+	if ok {
+		return nil
+	}
+
+	if v.FetchInterval > 0 {
+		time.Sleep(time.Duration(v.FetchInterval) * time.Millisecond)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	tr, err := item.Get(ctx)
+	cancel()
+	if err != nil {
+		return fmt.Errorf("get torrent failed: %w", err)
+	}
+
+	err = j.tr.Add(context.TODO(), tr, v.DownloadDir)
+	if err != nil {
+		return fmt.Errorf("add torrent failed: %w", err)
+	}
+
+	slog.Info("add torrent", "url", item.Url, "name", item.Title)
+
+	err = j.cache.Store(v.Url, item.Url, tr)
+	if err != nil {
+		return fmt.Errorf("store torrent failed: %w", err)
+	}
+
+	return nil
+}
+
 func splitConfigByHostname(config *Config) map[string]*Config {
 	m := make(map[string]*Config)
 	for _, v := range config.Rss {
+		if v.ExpiredOrDisabled() {
+			continue
+		}
+
 		uri, err := url.Parse(v.Url)
 		if err != nil {
 			m["default"] = config

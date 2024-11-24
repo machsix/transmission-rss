@@ -11,6 +11,11 @@ updates:
       interval: "daily"
     open-pull-requests-limit: 10
 
+  - package-ecosystem: "npm" # See documentation for possible values
+    directory: "/web" # Location of package manifests
+    schedule:
+      interval: "daily"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
