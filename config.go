@@ -78,10 +78,42 @@ type RSS struct {
 	ExpireTime    int64    `json:"expire_time,omitempty" toml:"expire_time"`
 	FetchInterval int64    `json:"fetch_interval,omitempty" toml:"fetch_interval"`
 
-	regexp        []*regexp.Regexp
-	excludeRegexp []*regexp.Regexp
+	regexp        regexps
+	excludeRegexp regexps
 	downloadAfter time.Time
 	expireTime    time.Time
+}
+
+type regexps []*regexp.Regexp
+
+func newRegexps(patterns []string) regexps {
+	if len(patterns) == 0 {
+		return make(regexps, 0)
+	}
+
+	regexps := make([]*regexp.Regexp, 0, len(patterns))
+
+	for _, v := range patterns {
+		rp, err := regexp.Compile(v)
+		if err != nil {
+			slog.Error("compile regexp failed", "err", err, "pattern", v)
+			continue
+		}
+
+		regexps = append(regexps, rp)
+	}
+
+	return regexps
+}
+
+func (r regexps) Match(s string) bool {
+	for _, v := range r {
+		if v.MatchString(s) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *RSS) MatchDate(pubDate time.Time) bool {
@@ -95,6 +127,7 @@ func (r *RSS) MatchDate(pubDate time.Time) bool {
 
 	return pubDate.After(r.downloadAfter)
 }
+
 func (r *RSS) ExpiredOrDisabled() bool {
 	if r.Disabled {
 		return true
@@ -112,53 +145,20 @@ func (r *RSS) ExpiredOrDisabled() bool {
 }
 
 func (r *RSS) Match(title string) bool {
-	if r.regexp == nil && len(r.Regexp) > 0 {
-		regexps := make([]*regexp.Regexp, 0, len(r.Regexp))
-
-		for _, v := range r.Regexp {
-			rr, err := regexp.Compile(v)
-			if err != nil {
-				slog.Error("compile regexp failed", "err", err, "regexp", v)
-				continue
-			}
-
-			regexps = append(regexps, rr)
-
-		}
-
-		r.regexp = regexps
+	if r.regexp == nil {
+		r.regexp = newRegexps(r.Regexp)
 	}
 
-	if r.excludeRegexp == nil && len(r.ExcludeRegexp) > 0 {
-		regexps := make([]*regexp.Regexp, 0, len(r.ExcludeRegexp))
-
-		for _, v := range r.ExcludeRegexp {
-			rr, err := regexp.Compile(v)
-			if err != nil {
-				slog.Error("compile regexp failed", "err", err, "regexp", v)
-				continue
-			}
-
-			regexps = append(regexps, rr)
-		}
-
-		r.excludeRegexp = regexps
+	if r.excludeRegexp == nil {
+		r.excludeRegexp = newRegexps(r.ExcludeRegexp)
 	}
 
-	for _, v := range r.excludeRegexp {
-		if v.MatchString(title) {
-			return false
-		}
+	if r.excludeRegexp.Match(title) {
+		return false
 	}
 
-	if len(r.Regexp) == 0 {
+	if len(r.Regexp) == 0 || r.regexp.Match(title) {
 		return true
-	}
-
-	for _, v := range r.regexp {
-		if v.MatchString(title) {
-			return true
-		}
 	}
 
 	return false

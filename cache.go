@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/gob"
+	"io"
 
 	"go.etcd.io/bbolt"
 )
@@ -49,6 +50,30 @@ func (c *cache) Load(rssUrl, torrentUrl string) (Torrent, bool) {
 	})
 
 	return t, t != nil
+}
+
+func (c *cache) RangeRss(rssUrl string) func(f func(Torrent) bool) {
+	return func(f func(Torrent) bool) {
+		_ = c.b.View(func(tx *bbolt.Tx) error {
+			bkt := tx.Bucket([]byte(rssUrl))
+			if bkt == nil {
+				return nil
+			}
+
+			return bkt.ForEach(func(k, v []byte) error {
+				tt, err := c.parseTorrent(v)
+				if err != nil {
+					return err
+				}
+
+				if !f(tt) {
+					return io.EOF
+				}
+
+				return nil
+			})
+		})
+	}
 }
 
 func (c *cache) Store(rssUrl, torrentUrl string, t Torrent) error {

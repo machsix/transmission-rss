@@ -16,9 +16,9 @@ import (
 
 var config atomic.Pointer[Config]
 var configMu sync.RWMutex
-var runJob atomic.Bool
 var configFullPath string
-var ch = make(chan func())
+var ch = make(chan struct{})
+var job *Job
 
 var unmarshalConfig = toml.Unmarshal
 var marshalConfig = toml.Marshal
@@ -37,7 +37,7 @@ func main() {
 		marshalConfig = func(v any) ([]byte, error) { return json.MarshalIndent(v, "", "  ") }
 	}
 
-	updateConfig()
+	readConfig()
 
 	cache, err := NewCacheByPath(filepath.Join(*path, "trss.db"))
 	if err != nil {
@@ -50,7 +50,7 @@ func main() {
 		panic(err)
 	}
 
-	job := NewJob(tr, cache)
+	job = NewJob(tr, cache)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -75,7 +75,7 @@ func main() {
 	}
 }
 
-func updateConfig() {
+func readConfig() {
 	configMu.Lock()
 	defer configMu.Unlock()
 
