@@ -1,6 +1,6 @@
+import { NextUIProvider } from "@nextui-org/react";
 import type { Metadata } from "next";
 import "./globals.css";
-import { NextUIProvider } from "@nextui-org/system";
 
 export const metadata: Metadata = {
   title: "Transmission RSS",

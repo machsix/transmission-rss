@@ -1,21 +1,11 @@
 "use client"
 
-import { Button } from "@nextui-org/button";
-import { DatePicker } from "@nextui-org/date-picker";
-import { Input, Textarea } from "@nextui-org/input";
-import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, useDisclosure } from "@nextui-org/modal";
-import { Switch } from "@nextui-org/switch";
-import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@nextui-org/table";
+import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import { Autocomplete, AutocompleteItem, Button, Card, CardBody, CardFooter, CardHeader, Chip, DatePicker, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Popover, PopoverContent, PopoverTrigger, Spinner, Switch, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow, Textarea, useDisclosure } from "@nextui-org/react";
+import path from "path";
 import { useState } from "react";
 import useSWR from "swr";
-import { getLocalTimeZone, fromDate } from "@internationalized/date";
-import { Card, CardBody, CardFooter, CardHeader } from "@nextui-org/card";
-import { Spinner } from "@nextui-org/spinner";
-import { Chip } from "@nextui-org/chip";
 import { DeleteIcon, EditIcon, PlusIcon } from "./icons";
-import { Popover, PopoverContent, PopoverTrigger } from "@nextui-org/popover";
-import { Autocomplete, AutocompleteItem } from "@nextui-org/autocomplete";
-import path from "path";
 
 type Status = {
   running: boolean;
@@ -327,14 +317,14 @@ export default function Home() {
                   hideTimeZone
                   showMonthAndYearPickers
                   value={config.download_after ? fromDate(new Date(config.download_after * 1000), getLocalTimeZone()) : undefined}
-                  onChange={(e) => setConfig({ ...config, download_after: e.toDate().getTime() / 1000 })}
+                  onChange={(e) => { if (e) setConfig({ ...config, download_after: e.toDate().getTime() / 1000 }) }}
                 />
                 <DatePicker
                   label="Expire Time"
                   hideTimeZone
                   showMonthAndYearPickers
                   value={config.expire_time ? fromDate(new Date(config.expire_time * 1000), getLocalTimeZone()) : undefined}
-                  onChange={(e) => setConfig({ ...config, expire_time: e.toDate().getTime() / 1000 })}
+                  onChange={(e) => { if (e) setConfig({ ...config, expire_time: e.toDate().getTime() / 1000 }) }}
                 />
               </ModalBody>
               <ModalFooter>
