@@ -1,21 +1,11 @@
 "use client"
 
-import { Button } from "@nextui-org/button";
-import { DatePicker } from "@nextui-org/date-picker";
-import { Input, Textarea } from "@nextui-org/input";
-import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, useDisclosure } from "@nextui-org/modal";
-import { Switch } from "@nextui-org/switch";
-import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@nextui-org/table";
+import { Autocomplete, AutocompleteItem, Button, Card, CardBody, CardFooter, CardHeader, Chip, DatePicker, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Popover, PopoverContent, PopoverTrigger, Spinner, Switch, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow, Textarea, Tooltip, useDisclosure } from "@heroui/react";
+import { fromDate, getLocalTimeZone, ZonedDateTime } from "@internationalized/date";
+import path from "path";
 import { useState } from "react";
 import useSWR from "swr";
-import { getLocalTimeZone, fromDate } from "@internationalized/date";
-import { Card, CardBody, CardFooter, CardHeader } from "@nextui-org/card";
-import { Spinner } from "@nextui-org/spinner";
-import { Chip } from "@nextui-org/chip";
 import { DeleteIcon, EditIcon, PlusIcon } from "./icons";
-import { Popover, PopoverContent, PopoverTrigger } from "@nextui-org/popover";
-import { Autocomplete, AutocompleteItem } from "@nextui-org/autocomplete";
-import path from "path";
 
 type Status = {
   running: boolean;
@@ -41,7 +31,7 @@ const emptyConfig: RSS = {
   download_dir: "",
 }
 
-// const baseUrl = "http://100.112.45.105:9093";
+// const baseUrl = "http://localhost:9093";
 const baseUrl = "";
 const configUrl = `${baseUrl}/api/v1/config`;
 const StartJobUrl = `${baseUrl}/start_job`;
@@ -324,17 +314,19 @@ export default function Home() {
                 />
                 <DatePicker
                   label="Download After"
+                  inert={false}
                   hideTimeZone
                   showMonthAndYearPickers
                   value={config.download_after ? fromDate(new Date(config.download_after * 1000), getLocalTimeZone()) : undefined}
-                  onChange={(e) => setConfig({ ...config, download_after: e.toDate().getTime() / 1000 })}
+                  onChange={(e: ZonedDateTime | null) => setConfig({ ...config, download_after: e ? e.toDate().getTime() / 1000 : undefined })}
                 />
                 <DatePicker
+                  inert={false}
                   label="Expire Time"
                   hideTimeZone
                   showMonthAndYearPickers
                   value={config.expire_time ? fromDate(new Date(config.expire_time * 1000), getLocalTimeZone()) : undefined}
-                  onChange={(e) => setConfig({ ...config, expire_time: e.toDate().getTime() / 1000 })}
+                  onChange={(e: ZonedDateTime | null) => setConfig({ ...config, expire_time: e ? e.toDate().getTime() / 1000 : undefined })}
                 />
               </ModalBody>
               <ModalFooter>
@@ -355,7 +347,7 @@ export default function Home() {
       <Table
         aria-label="RSS Table"
         removeWrapper
-        selectionMode="single"
+        selectionMode="none"
         isStriped
         isHeaderSticky
         topContent={
@@ -366,7 +358,7 @@ export default function Home() {
                 isLoading={status?.running}
                 color="primary"
                 variant="flat"
-                onClick={async () => {
+                onPress={async () => {
                   try {
                     const resp = await fetch(StartJobUrl)
                     if (!resp.ok) {
@@ -385,7 +377,7 @@ export default function Home() {
                 color="primary"
                 variant="flat"
                 endContent={<PlusIcon />}
-                onClick={() => { openModal(-1, emptyConfig, true) }}
+                onPress={() => { openModal(-1, emptyConfig, true) }}
               >
                 Add New
               </Button>
@@ -411,14 +403,15 @@ export default function Home() {
                     {rss.disabled ? "Disabled" : "Enabled"}
                   </Chip>
                 </TableCell>
-                <TableCell onClick={(e) => {
-                  e.nativeEvent.stopImmediatePropagation();
-                  e.stopPropagation()
-                }}>
-                  <div className="relative flex items-center gap-2" >
-                    <span className="text-lg text-default-400 cursor-pointer active:opacity-50" onClick={() => { openModal(i, rss); }}>
-                      <EditIcon />
-                    </span>
+                <TableCell>
+                  <div className="relative flex items-center gap-2">
+
+
+                    <Tooltip content="Edit">
+                      <span className="text-lg text-default-400 cursor-pointer active:opacity-50" onClick={(e) => { openModal(i, rss); }}>
+                        <EditIcon />
+                      </span>
+                    </Tooltip>
 
                     <Popover placement="bottom" backdrop="blur" className="w-[300px]" isOpen={isPopoverOpen[i]} onOpenChange={(open) => setIsPopoverOpen({ ...isPopoverOpen, [i]: open })}>
                       <PopoverTrigger>
@@ -433,8 +426,8 @@ export default function Home() {
                             <p className="text-default-600">{rss.name}</p>
                           </CardBody>
                           <CardFooter className="justify-between">
-                            <Button color="default" variant="bordered" size="sm" onClick={() => { setIsPopoverOpen({ ...isPopoverOpen, [i]: false }) }}>Cancel</Button>
-                            <Button color="danger" variant="bordered" size="sm" onClick={() => {
+                            <Button color="default" variant="bordered" size="sm" onPress={() => { setIsPopoverOpen({ ...isPopoverOpen, [i]: false }) }}>Cancel</Button>
+                            <Button color="danger" variant="bordered" size="sm" onPress={() => {
                               deleteRss(i, rss)
                               setIsPopoverOpen({ ...isPopoverOpen, [i]: false })
                             }}>Delete</Button>
