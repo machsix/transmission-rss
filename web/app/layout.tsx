@@ -1,4 +1,4 @@
-import { NextUIProvider } from "@nextui-org/react";
+import { HeroUIProvider } from "@heroui/react";
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -14,9 +14,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <NextUIProvider>
+        <HeroUIProvider>
           {children}
-        </NextUIProvider>
+        </HeroUIProvider>
       </body>
     </html>
   );
