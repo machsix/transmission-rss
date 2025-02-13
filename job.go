@@ -8,8 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"golang.org/x/sync/semaphore"
 )
 
 type Job struct {
@@ -83,37 +81,27 @@ func (j *Job) DoOne(config *Config) {
 	ch := make(chan Result, 10)
 
 	go func() {
-		wg := &sync.WaitGroup{}
-		semaphore := semaphore.NewWeighted(15)
 		defer close(ch)
 		for _, v := range config.Rss {
 			if v.ExpiredOrDisabled() {
 				continue
 			}
 
-			time.Sleep(time.Millisecond * 100)
+			time.Sleep(time.Millisecond * time.Duration(v.FetchInterval))
 
-			wg.Add(1)
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			chs, err := ParseUrl(ctx, v.Url)
+			cancel()
+			if err != nil {
+				slog.Error("parse rss failed", "err", err, "url", v.Url, "name", v.Name)
+				return
+			}
 
-			_ = semaphore.Acquire(context.Background(), 1)
-			go func() {
-				defer wg.Done()
-				defer semaphore.Release(1)
-				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-				chs, err := ParseUrl(ctx, v.Url)
-				cancel()
-				if err != nil {
-					slog.Error("parse rss failed", "err", err, "url", v.Url, "name", v.Name)
-					return
-				}
-
-				ch <- Result{
-					channels: chs,
-					rss:      v,
-				}
-			}()
+			ch <- Result{
+				channels: chs,
+				rss:      v,
+			}
 		}
-		wg.Wait()
 	}()
 
 	for r := range ch {
