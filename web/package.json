@@ -9,20 +9,20 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@heroui/react": "^2.7.2",
+    "@heroui/react": "^2.7.4",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "framer-motion": "^12.4.7",
-    "next": "^15.1.7",
+    "next": "^15.2.0",
     "swr": "^2.3.2"
   },
   "devDependencies": {
-    "@types/node": "^22.13.4",
+    "@types/node": "^22.13.8",
     "autoprefixer": "^10.4.20",
-    "eslint": "^9.20.1",
-    "eslint-config-next": "15.1.7",
+    "eslint": "^9.21.0",
+    "eslint-config-next": "15.2.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.3"
+    "typescript": "^5.8.2"
   }
 }

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/samber/lo"
 )
 
 type Job struct {
@@ -97,11 +99,11 @@ func (j *Job) DoOne(config *Config) {
 				return
 			}
 
-			n_items := 0
-			for _, ch := range chs {
-				n_items += len(ch.Items)
-			}
-			slog.Info(fmt.Sprintf("parse rss url: %s name: %s items: %d", v.Url, v.Name, n_items))
+			slog.Info("parse rss url",
+				"url", v.Url,
+				"name", v.Name,
+				"items", lo.Reduce(chs, func(sum int, ch Channel, _ int) int { return sum + len(ch.Items) }, 0),
+			)
 
 			ch <- Result{
 				channels: chs,
